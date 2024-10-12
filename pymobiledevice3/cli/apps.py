@@ -57,3 +57,9 @@ def install(service_provider: LockdownServiceProvider, ipa_or_app_path: str) -> 
 def afc(service_provider: LockdownClient, bundle_id: str, documents: bool):
     """ open an AFC shell for given bundle_id, assuming its profile is installed """
     HouseArrestService(lockdown=service_provider, bundle_id=bundle_id, documents_only=documents).shell()
+
+@apps.command('ipcc', cls=Command)
+@click.argument('ipcc_path', type=click.Path(exists=True))
+def ipcc(service_provider: LockdownServiceProvider, ipcc_path: str) -> None:
+    """ install given .ipcc CarrierBundles """
+    InstallationProxyService(lockdown=service_provider).install_ipcc(ipcc_path)

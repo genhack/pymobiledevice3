@@ -15,12 +15,25 @@ from pymobiledevice3.services.lockdown_service import LockdownService
 GET_APPS_ADDITIONAL_INFO = {'ReturnAttributes': ['CFBundleIdentifier', 'StaticDiskUsage', 'DynamicDiskUsage']}
 
 TEMP_REMOTE_IPA_FILE = '/pymobiledevice3.ipa'
-
+TEMP_REMOTE_IPCC_FILE = '/pymobiledevice3.ipcc'
 
 def create_ipa_contents_from_directory(directory: str) -> bytes:
     payload_prefix = 'Payload/' + os.path.basename(directory)
     with TemporaryDirectory() as temp_dir:
         zip_path = Path(temp_dir) / 'ipa'
+        with ZipFile(zip_path, 'w', ZIP_DEFLATED) as zip_file:
+            for root, dirs, files in os.walk(directory):
+                for file in files:
+                    full_path = Path(root) / file
+                    full_path.touch()
+                    zip_file.write(full_path,
+                                   arcname=f'{payload_prefix}/{os.path.relpath(full_path, directory)}')
+        return zip_path.read_bytes()
+
+def create_ipcc_contents_from_directory(directory: str) -> bytes:
+    payload_prefix = 'Payload/' + os.path.basename(directory)
+    with TemporaryDirectory() as temp_dir:
+        zip_path = Path(temp_dir) / 'ipcc'
         with ZipFile(zip_path, 'w', ZIP_DEFLATED) as zip_file:
             for root, dirs, files in os.walk(directory):
                 for file in files:
@@ -167,3 +180,24 @@ class InstallationProxyService(LockdownService):
             for bundle_identifier, app in additional_info.items():
                 result[bundle_identifier].update(app)
         return result
+
+    def install_ipcc(self, ipcc_path: str, options: Optional[dict] = None, handler: Callable = None, *args) -> None:
+        """ Install bundle carrier IPCC """
+        if options is None:
+            options = {}
+
+        if Path(ipcc_path).is_dir():
+            ipcc_contents = create_ipcc_contents_from_directory(str(ipcc_path))
+        else:
+            ipcc_contents = Path(ipcc_path).read_bytes()
+
+        # Carica i contenuti del file .ipcc sul dispositivo tramite AFC
+        with AfcService(self.lockdown) as afc:
+            afc.set_file_contents(TEMP_REMOTE_IPCC_FILE, ipcc_contents)
+        options['PackageType'] = 'CarrierBundle'
+        self.service.send_plist({
+            'Command': 'Install',
+            'ClientOptions': options,
+            'PackagePath': TEMP_REMOTE_IPCC_FILE
+        })
+        self._watch_completion(handler, *args)
